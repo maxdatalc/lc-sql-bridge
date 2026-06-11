@@ -12,7 +12,7 @@ Como instalar
 1. Copie esta pasta inteira (lc-sql-bridge) para este PC.
    Sugestao de local: C:\LC\lc-sql-bridge\
 
-2. De duplo clique em INSTALAR.exe
+2. De duplo clique em LCBRIDGE-INSTALL.exe
    - O Windows pedira confirmacao de Administrador. Clique em "Sim".
    - Siga as instrucoes na tela (nome do cliente, banco de dados).
    - Ao final, copie o TOKEN exibido e informe ao suporte da LC Tecnologias.
@@ -36,7 +36,7 @@ Requisitos
 
 Arquivos desta pasta
 ---------------------
-INSTALAR.exe          -> Duplo clique para instalar (use sempre este)
+LCBRIDGE-INSTALL.exe          -> Duplo clique para instalar (use sempre este)
 INSTALAR.bat          -> Alternativa caso o .exe nao funcione
 iniciar-bridge.ps1    -> Inicia manualmente (caso necessario)
 desinstalar-bridge.ps1-> Remove o servico desta maquina

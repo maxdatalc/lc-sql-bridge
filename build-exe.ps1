@@ -11,7 +11,7 @@ Set-StrictMode -Off
 Set-Location $PSScriptRoot
 
 $InputFile  = Join-Path $PSScriptRoot "instalar.ps1"
-$OutputFile = Join-Path $PSScriptRoot "INSTALAR.exe"
+$OutputFile = Join-Path $PSScriptRoot "LCBRIDGE-INSTALL.exe"
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -78,7 +78,7 @@ Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "  Distribua estes arquivos para o cliente:" -ForegroundColor White
 Write-Host ""
-Write-Host "  INSTALAR.exe           <- duplo clique para instalar" -ForegroundColor Yellow
+Write-Host "  LCBRIDGE-INSTALL.exe   <- duplo clique para instalar" -ForegroundColor Yellow
 Write-Host "  bridge.js" -ForegroundColor White
 Write-Host "  package.json" -ForegroundColor White
 Write-Host "  iniciar-bridge.ps1" -ForegroundColor White

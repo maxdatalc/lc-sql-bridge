@@ -25,7 +25,7 @@ A porta 1433 do SQL Server **nunca é exposta** — apenas a porta 3055 da bridg
 ## Instalação (tudo em uma etapa)
 
 1. Copie a pasta `lc-sql-bridge` para o computador do cliente (ex: `C:\LC\lc-sql-bridge`)
-2. **Duplo clique em `INSTALAR.exe`**
+2. **Duplo clique em `LCBRIDGE-INSTALL.exe`**
    - O Windows pedirá confirmação de Administrador — clique em **Sim**
    - Siga as instruções na tela
 3. Ao final, copie o **token** exibido e cadastre no painel do LC Gestor
@@ -43,14 +43,14 @@ O instalador faz tudo automaticamente:
 
 ---
 
-## Gerar INSTALAR.exe (uma vez, na máquina de desenvolvimento)
+## Gerar LCBRIDGE-INSTALL.exe (uma vez, na máquina de desenvolvimento)
 
 ```powershell
 # Execute no computador de desenvolvimento (requer internet na primeira vez)
 powershell.exe -ExecutionPolicy Bypass -File build-exe.ps1
 ```
 
-O `INSTALAR.exe` gerado inclui o UAC manifest — ao dar duplo clique, o Windows já pede elevação automaticamente. Adicione o exe ao ZIP de distribuição. Ele **não vai para o git** (está no `.gitignore`).
+O `LCBRIDGE-INSTALL.exe` gerado inclui o UAC manifest — ao dar duplo clique, o Windows já pede elevação automaticamente. Adicione o exe ao ZIP de distribuição. Ele **não vai para o git** (está no `.gitignore`).
 
 ---
 
@@ -64,7 +64,7 @@ git commit -m "..."
 git push
 ```
 
-O técnico baixa o novo ZIP do GitHub, extrai por cima da pasta existente e roda `INSTALAR.exe` novamente → escolhe **Reparar** para atualizar sem perder o token.
+O técnico baixa o novo ZIP do GitHub, extrai por cima da pasta existente e roda `LCBRIDGE-INSTALL.exe` novamente → escolhe **Reparar** para atualizar sem perder o token.
 
 ---
 
