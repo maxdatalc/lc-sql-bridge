@@ -22,7 +22,7 @@ if (-not $isAdmin) {
 }
 
 Write-Host ""
-Write-Host "LC Gestor — Desinstalacao da Bridge SQL" -ForegroundColor Cyan
+Write-Host "LC Gestor - Desinstalacao da Bridge SQL" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. Parar processo em execucao

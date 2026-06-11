@@ -1,6 +1,6 @@
 # testar-bridge.ps1
 # Testa se a bridge esta respondendo corretamente.
-# Le token e porta automaticamente do .env — nao precisa copiar nada.
+# Le token e porta automaticamente do .env.
 
 #Requires -Version 5.1
 Set-StrictMode -Off
@@ -15,7 +15,6 @@ if (-not (Test-Path $EnvFile)) {
     exit 1
 }
 
-# Le variaveis do .env
 $envVars = @{}
 Get-Content $EnvFile | ForEach-Object {
     if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
@@ -35,7 +34,7 @@ if (-not $token) {
 $baseUrl = "http://localhost:$port"
 
 Write-Host ""
-Write-Host "LC Gestor — Teste da Bridge SQL" -ForegroundColor Cyan
+Write-Host "LC Gestor - Teste da Bridge SQL" -ForegroundColor Cyan
 Write-Host "URL: $baseUrl" -ForegroundColor White
 Write-Host ""
 
@@ -51,7 +50,7 @@ try {
         exit 1
     }
 } catch {
-    Write-Host "FALHOU — bridge nao esta rodando" -ForegroundColor Red
+    Write-Host "FALHOU - bridge nao esta rodando" -ForegroundColor Red
     Write-Host "   Execute iniciar-bridge.ps1 ou verifique o Agendador de Tarefas." -ForegroundColor Yellow
     Read-Host "Pressione Enter para sair"
     exit 1
@@ -63,12 +62,12 @@ try {
     $r = Invoke-WebRequest -Uri "$baseUrl/query" -Method POST `
         -Headers @{ Authorization = "Bearer token_invalido"; 'Content-Type' = 'application/json' } `
         -Body '{"sql":"SELECT 1"}' -TimeoutSec 5 -ErrorAction SilentlyContinue
-    Write-Host "AVISO — retornou $($r.StatusCode) (esperado 401)" -ForegroundColor Yellow
+    Write-Host "AVISO - retornou $($r.StatusCode) (esperado 401)" -ForegroundColor Yellow
 } catch {
     if ($_.Exception.Response.StatusCode.value__ -eq 401) {
         Write-Host "OK  (token invalido rejeitado corretamente)" -ForegroundColor Green
     } else {
-        Write-Host "AVISO — resposta inesperada: $_" -ForegroundColor Yellow
+        Write-Host "AVISO - resposta inesperada: $_" -ForegroundColor Yellow
     }
 }
 
@@ -85,12 +84,13 @@ try {
                -Headers $headers -Body $body -TimeoutSec 15
 
     if ($null -ne $resp.rows) {
-        Write-Host "   OK  — $($resp.rows.Count) linha(s) retornada(s)" -ForegroundColor Green
+        $nRows = $resp.rows.Count
+        Write-Host "   OK - $nRows linha(s) retornada(s)" -ForegroundColor Green
         if ($resp.rows.Count -gt 0) {
             Write-Host "   Primeira linha: $($resp.rows[0] | ConvertTo-Json -Compress)" -ForegroundColor Gray
         }
     } else {
-        Write-Host "   AVISO — resposta sem campo 'rows'" -ForegroundColor Yellow
+        Write-Host "   AVISO - resposta sem campo rows" -ForegroundColor Yellow
     }
 } catch {
     $sc  = $null; try { $sc  = $_.Exception.Response.StatusCode.value__ } catch {}
