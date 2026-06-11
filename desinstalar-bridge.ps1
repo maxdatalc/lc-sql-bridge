@@ -79,7 +79,7 @@ if (Test-Path $logsDir) {
     $logFiles = Get-ChildItem $logsDir -File
     if ($logFiles.Count -gt 0) {
         Write-Host ""
-        $r = Read-Host "Apagar pasta de logs ($($logFiles.Count) arquivo(s))? [S/N] (padrao: N)"
+        $r = Read-Host "Apagar pasta de logs ($($logFiles.Count) arquivos)? [S/N] (padrao: N)"
         if ($r -match '^[Ss]') {
             Remove-Item $logsDir -Recurse -Force
             Write-Host "   Logs removidos." -ForegroundColor Green
