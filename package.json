@@ -1,0 +1,13 @@
+{
+  "name": "lc-sql-bridge",
+  "version": "1.1.0",
+  "description": "Proxy HTTP seguro entre LC Gestor e SQL Server do cliente",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mssql": "^12.5.5"
+  }
+}
