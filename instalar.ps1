@@ -385,7 +385,7 @@ if (-not $nodeFull) {
             -MultipleInstances  IgnoreNew `
             -RestartCount       3 `
             -RestartInterval    (New-TimeSpan -Minutes 2) `
-            -StartWhenAvailable $true
+            -StartWhenAvailable
 
         if ($useSystemAccount) {
             $principal = New-ScheduledTaskPrincipal `
@@ -535,6 +535,32 @@ if ($copiar -match '^[Ss]') {
     try { $novoToken | Set-Clipboard; Write-Host "  Token copiado." -ForegroundColor Green }
     catch { Write-Host "  Nao foi possivel copiar. Copie manualmente acima." -ForegroundColor Yellow }
 }
+
+# Sugestao de subdominio baseada no nome do cliente
+$slugCliente = $clienteNome -replace '[^a-zA-Z0-9]', '-' -replace '-+', '-' -replace '^-|-$', ''
+if (-not $slugCliente) { $slugCliente = 'nomecliente' }
+$slugCliente = $slugCliente.ToLower()
+
+Write-Host ""
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "   PROXIMO PASSO: Cloudflare Tunnel        " -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  1. Acesse: https://one.dash.cloudflare.com" -ForegroundColor White
+Write-Host "     Zero Trust -> Networks -> Tunnels" -ForegroundColor Gray
+Write-Host "     Clique no tunnel do cliente -> Edit -> Public Hostname -> Add" -ForegroundColor Gray
+Write-Host ""
+Write-Host "  2. Preencha:" -ForegroundColor White
+Write-Host "     Subdomain : sql-$slugCliente" -ForegroundColor Yellow
+Write-Host "     Domain    : lcgestor.com.br" -ForegroundColor Yellow
+Write-Host "     Type      : HTTP" -ForegroundColor Yellow
+Write-Host "     URL       : localhost:$bridgePort" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  3. Cadastre no painel LC Gestor:" -ForegroundColor White
+Write-Host "     URL do cliente : https://sql-$slugCliente.lcgestor.com.br" -ForegroundColor Yellow
+Write-Host "     Token          : (o token exibido acima)" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "==========================================" -ForegroundColor Cyan
 
 # Resumo sem token
 $summary = @"
