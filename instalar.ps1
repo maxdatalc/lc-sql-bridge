@@ -8,11 +8,17 @@
 
 #Requires -Version 5.1
 Set-StrictMode -Off
-Set-Location $PSScriptRoot
+
+# $PSScriptRoot fica vazio quando compilado como .exe via ps2exe — usa o caminho do processo como fallback
+$BridgeDir = if ($PSScriptRoot) {
+    $PSScriptRoot
+} else {
+    Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName)
+}
+Set-Location $BridgeDir
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 $TaskName    = "LC Gestor SQL Bridge"
-$BridgeDir   = $PSScriptRoot
 $EnvFile     = Join-Path $BridgeDir ".env"
 $BridgeFile  = Join-Path $BridgeDir "bridge.js"
 $PackageFile = Join-Path $BridgeDir "package.json"
@@ -20,8 +26,10 @@ $SummaryFile = Join-Path $BridgeDir "configuracao-cliente.txt"
 $TotalSteps  = 8
 
 # Credenciais SQL fixas — iguais em todos os clientes
-$SQL_USER = 'lc_dashboard'
-$SQL_PASS = 'Max@1225'
+$SQL_USER       = 'lc_dashboard'
+$SQL_PASS       = 'Max@1225'
+$SQL_ADMIN_USER = 'sa'
+$SQL_ADMIN_PASS = 'macro01'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function Write-Step($n, $msg) {
@@ -224,9 +232,6 @@ if ($isReinstall) {
     $inp = Read-Host "   Host do SQL Server [localhost]"
     if ($inp.Trim() -ne '') { $dbHost = $inp.Trim() }
 
-    $inp = Read-Host "   Porta do SQL Server [1433]"
-    if ($inp.Trim() -ne '') { $dbPort = $inp.Trim() }
-
     while ($dbName.Trim() -eq '') { $dbName = Read-Host "   Nome do banco de dados" }
 
     Write-Host ""
@@ -291,54 +296,24 @@ if (-not $sqlcmd) {
     Write-Host "   Execute o script SQL manualmente no SSMS antes de usar a bridge:" -ForegroundColor Yellow
     Write-Host "   Arquivo: criar-usuario.sql" -ForegroundColor White
 } else {
-    Write-Host "   sqlcmd: $sqlcmd" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "   Como conectar ao SQL Server para criar o usuario?" -ForegroundColor White
-    Write-Host "   [1] Autenticacao Windows (usuario atual tem sysadmin no SQL)" -ForegroundColor White
-    Write-Host "   [2] Autenticacao SQL (informar SA ou outro sysadmin)" -ForegroundColor White
-    Write-Host "   [3] Pular (executar criar-usuario.sql manualmente depois)" -ForegroundColor White
-    Write-Host ""
-    $authMode = Read-Host "   Escolha [1/2/3]"
+    $tmpSql = [System.IO.Path]::GetTempFileName() + ".sql"
+    [System.IO.File]::WriteAllText($tmpSql, $scriptSQL, [System.Text.UTF8Encoding]::new($false))
 
-    if ($authMode -eq '3') {
-        Write-Warn "Criacao do usuario SQL pulada. Execute criar-usuario.sql no SSMS antes de usar."
-    } else {
-        $adminUser  = ''
-        $adminPass  = ''
-        $useWinAuth = $authMode -eq '1'
-
-        if (-not $useWinAuth) {
-            while ($adminUser.Trim() -eq '') { $adminUser = Read-Host "   Usuario admin SQL (ex: sa)" }
-            Write-Host "   Senha admin (nao sera exibida): " -NoNewline -ForegroundColor White
-            $secPass  = Read-Host -AsSecureString
-            $BSTR     = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
-            $adminPass = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    try {
+        Write-Host "   Executando script SQL (sa)..." -ForegroundColor Gray
+        $resultado = & $sqlcmd -S $serverArg -U $SQL_ADMIN_USER -P $SQL_ADMIN_PASS -i $tmpSql 2>&1
+        $exitCode  = $LASTEXITCODE
+        $resultado | ForEach-Object {
+            if ($_.Trim() -ne '') { Write-Host "   $_" -ForegroundColor Gray }
         }
-
-        $tmpSql = [System.IO.Path]::GetTempFileName() + ".sql"
-        [System.IO.File]::WriteAllText($tmpSql, $scriptSQL, [System.Text.UTF8Encoding]::new($false))
-
-        try {
-            Write-Host "   Executando script SQL..." -ForegroundColor Gray
-            if ($useWinAuth) {
-                $resultado = & $sqlcmd -S $serverArg -E -i $tmpSql 2>&1
-            } else {
-                $resultado = & $sqlcmd -S $serverArg -U $adminUser -P $adminPass -i $tmpSql 2>&1
-            }
-            $exitCode = $LASTEXITCODE
-            $resultado | ForEach-Object {
-                if ($_.Trim() -ne '') { Write-Host "   $_" -ForegroundColor Gray }
-            }
-            if ($exitCode -ne 0) {
-                Write-Warn "sqlcmd retornou erro (codigo $exitCode). Verifique as mensagens acima."
-                Write-Host "   Se preferir, execute criar-usuario.sql manualmente no SSMS." -ForegroundColor Yellow
-            } else {
-                Write-OK "Usuario '$SQL_USER' criado/atualizado no banco '$dbName'."
-            }
-        } finally {
-            Remove-Item $tmpSql -ErrorAction SilentlyContinue
+        if ($exitCode -ne 0) {
+            Write-Warn "sqlcmd retornou erro (codigo $exitCode). Verifique as mensagens acima."
+            Write-Host "   Se preferir, execute criar-usuario.sql manualmente no SSMS." -ForegroundColor Yellow
+        } else {
+            Write-OK "Usuario '$SQL_USER' criado/atualizado no banco '$dbName'."
         }
+    } finally {
+        Remove-Item $tmpSql -ErrorAction SilentlyContinue
     }
 }
 Write-Host "   Script SQL salvo em: criar-usuario.sql" -ForegroundColor Gray
