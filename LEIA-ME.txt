@@ -1,6 +1,6 @@
 LC Gestor - Bridge SQL
 ======================
-Versao 1.1 | LC Tecnologias
+Versao 1.2 | LC Tecnologias
 
 O que e isso?
 -------------

@@ -1,4 +1,4 @@
-# LC Gestor — Bridge SQL Server
+o # LC Gestor — Bridge SQL Server
 
 Guia de instalação para técnicos.
 
