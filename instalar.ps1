@@ -320,7 +320,8 @@ function Add-Field([System.Windows.Forms.Control]$panel, $lbl, $x, $y, $w, $def 
     return New-Input $panel $x ($y + 24) $w $def
 }
 
-$tbDbName   = Add-Field $cardCfg 'Banco de dados'       16  16 422 '' $true
+$tbDbName    = Add-Field $cardCfg 'Banco de dados'       16  16 296 '' $true
+$btnBuscarBd = New-Btn  $cardCfg 'Buscar bancos'       318  40 122 28 $false
 $tbDbHost   = Add-Field $cardCfg 'Host do SQL Server'   16  90 198 'localhost'
 $tbDbPort   = Add-Field $cardCfg 'Porta SQL'            228  90 80  '1433'
 $tbBridgeP  = Add-Field $cardCfg 'Porta bridge'         322  90 116 '3055'
@@ -1650,6 +1651,27 @@ $btnNext.Add_Click({
 })
 
 $btnBack.Add_Click({ Show-Page 0 })
+
+$btnBuscarBd.Add_Click({
+    $dh = $tbDbHost.Text.Trim(); if ($dh -eq '') { $dh = 'localhost' }
+    $dp = $tbDbPort.Text.Trim(); if ($dp -eq '') { $dp = '1433' }
+    $btnBuscarBd.Enabled = $false
+    $btnBuscarBd.Text    = 'Buscando...'
+    [System.Windows.Forms.Application]::DoEvents()
+    $picked = Show-DbPicker -DbHost $dh -DbPort $dp
+    $btnBuscarBd.Enabled = $true
+    $btnBuscarBd.Text    = 'Buscar bancos'
+    if ($null -ne $picked -and $picked -ne '') {
+        $tbDbName.Text = $picked
+    } elseif ($null -eq $picked) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Nao foi possivel listar os bancos com as configuracoes informadas.`n`nVerifique o Host e a Porta SQL, ou digite o nome do banco manualmente.",
+            'Conexao ao SQL Server',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+    }
+})
 
 $btnInstall.Add_Click({
     $dh = $tbDbHost.Text.Trim(); if ($dh -eq '') { $dh = 'localhost' }
