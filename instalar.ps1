@@ -75,6 +75,7 @@ $script:SpinChars      = @('-', '+', 'x', '+')
 $script:UninstallMode  = $false
 $script:RemovedItems   = @()
 $script:copyResetTimer = $null
+$script:LogFile        = Join-Path $BridgeDir 'install-log.txt'
 
 $script:StepNames = @(
     'Verificando ambiente',
@@ -384,6 +385,10 @@ function Add-Log([string]$msg, [string]$level = 'info') {
         $rtbLog.AppendText("[$ts] $msg`n")
         $rtbLog.ScrollToCaret()
     }
+    try {
+        $tag = switch ($level) { 'ok' { 'OK  ' }; 'warn' { 'WARN' }; 'err' { 'ERR ' }; default { 'INFO' } }
+        Add-Content -Path $script:LogFile -Value "[$ts] [$tag] $msg" -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch {}
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -703,6 +708,21 @@ function Uninstall-Bridge {
         }
     }
 
+    $runtimeDir2 = Join-Path $BridgeDir 'runtime'
+    if (Test-Path $runtimeDir2) {
+        Set-Prog 3 'Removendo runtime (node portavel)...'
+        Add-Log "Removendo runtime/ (node.exe portavel)..."
+        [System.Windows.Forms.Application]::DoEvents()
+        try {
+            Remove-Item $runtimeDir2 -Recurse -Force
+            $script:RemovedItems += 'runtime/'
+            Add-Log "Removido: runtime/" 'ok'
+        } catch {
+            $failedItems += 'runtime/'
+            Add-Log "Falha ao remover runtime/: $_" 'warn'
+        }
+    }
+
     # ── Passo 4: Conclusao ────────────────────────────────────────────────────
     Set-Prog 4 'Desinstalacao concluida!'
     Add-Log "Desinstalacao finalizada." 'ok'
@@ -730,6 +750,149 @@ function Uninstall-Bridge {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
+# Seleção assistida de banco de dados
+# ════════════════════════════════════════════════════════════════════════════
+function Show-DbPicker([string]$DbHost, [string]$DbPort) {
+    # Retorna: nome do banco selecionado | '' para digitacao manual | $null se indisponivel
+
+    # Localiza sqlcmd
+    $sqlcmdBin = $null
+    $sc2 = Get-Command sqlcmd -ErrorAction SilentlyContinue
+    if ($sc2) { $sqlcmdBin = $sc2.Source }
+    if (-not $sqlcmdBin) {
+        foreach ($c in @(
+            "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\180\Tools\Binn\sqlcmd.exe",
+            "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\sqlcmd.exe",
+            "${env:ProgramFiles}\Microsoft SQL Server\130\Tools\Binn\sqlcmd.exe",
+            "${env:ProgramFiles}\Microsoft SQL Server\120\Tools\Binn\sqlcmd.exe"
+        )) { if (Test-Path $c) { $sqlcmdBin = $c; break } }
+    }
+    if (-not $sqlcmdBin) { return $null }
+
+    $serverArg = if ($DbPort -eq '' -or $DbPort -eq '1433') { $DbHost } else { "$DbHost,$DbPort" }
+    $sysNames  = @('master','model','msdb','tempdb')
+    $dbs       = @()
+
+    try {
+        $q = "SET NOCOUNT ON; SELECT name FROM sys.databases WHERE state_desc='ONLINE' ORDER BY name"
+        $r = Invoke-Proc $sqlcmdBin "-S $serverArg -U $SQL_ADMIN_USER -P $SQL_ADMIN_PASS -Q `"$q`" -h -1 -W -l 5 -t 10" -TimeoutSec 20
+        if ($r.ExitCode -eq 0) {
+            $dbs = ($r.Out -split "`r?`n") |
+                   ForEach-Object { $_.Trim() } |
+                   Where-Object   { $_ -ne '' -and $_ -notmatch '^[\s\-]+$' -and $_ -notmatch 'rows? affected' }
+        }
+    } catch {}
+
+    if ($dbs.Count -eq 0) { return $null }
+
+    $userDbs = @($dbs | Where-Object { $sysNames -notcontains $_.ToLower() })
+    $sysDbs2 = @($dbs | Where-Object { $sysNames -contains  $_.ToLower() })
+
+    $script:pickerResult = $null
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text            = 'Selecionar banco de dados'
+    $dlg.ClientSize      = [System.Drawing.Size]::new(440, 490)
+    $dlg.StartPosition   = 'CenterParent'
+    $dlg.FormBorderStyle = 'FixedSingle'
+    $dlg.MaximizeBox     = $false
+    $dlg.MinimizeBox     = $false
+    $dlg.BackColor       = $cBg
+
+    $hdrD = New-Object System.Windows.Forms.Panel
+    $hdrD.Dock      = 'Top'
+    $hdrD.Height    = 60
+    $hdrD.BackColor = $cHdrBg
+    $dlg.Controls.Add($hdrD)
+    New-Lbl $hdrD 'Selecionar banco de dados'       16  8 400 28 $fH2   $cWhite  'MiddleLeft' | Out-Null
+    New-Lbl $hdrD "$($dbs.Count) banco(s) em $DbHost" 18 38 400 18 $fSmall $cHdrSub 'MiddleLeft' | Out-Null
+
+    New-Lbl $dlg 'Bancos de dados disponiveis (duplo clique para confirmar):' 20 74 396 20 $fBold $cText 'MiddleLeft' | Out-Null
+
+    $lb = New-Object System.Windows.Forms.ListBox
+    $lb.Location    = [System.Drawing.Point]::new(20, 98)
+    $lb.Size        = [System.Drawing.Size]::new(396, 286)
+    $lb.Font        = $fBody
+    $lb.BackColor   = $cCard
+    $lb.ForeColor   = $cText
+    $lb.BorderStyle = 'FixedSingle'
+    $dlg.Controls.Add($lb)
+
+    foreach ($db in $userDbs) { $lb.Items.Add($db) | Out-Null }
+    foreach ($db in $sysDbs2) { $lb.Items.Add("$db  [sistema]") | Out-Null }
+    $lb.Items.Add('[ Digitar manualmente ]') | Out-Null
+    if ($lb.Items.Count -gt 0) { $lb.SelectedIndex = 0 }
+
+    $lblSel = New-Lbl $dlg '' 20 394 396 24 $fBold $cGreen 'MiddleLeft'
+
+    $lb.add_SelectedIndexChanged({
+        $s = if ($lb.SelectedItem) { $lb.SelectedItem.ToString() } else { '' }
+        if ($s -eq '[ Digitar manualmente ]') {
+            $lblSel.Text      = 'Voce ira preencher o nome do banco manualmente'
+            $lblSel.ForeColor = $cAmber
+        } elseif ($s -like '*  [sistema]') {
+            $lblSel.Text      = 'Selecionado: ' + ($s -replace '  \[sistema\]$','') + '  (banco de sistema)'
+            $lblSel.ForeColor = $cAmber
+        } elseif ($s -ne '') {
+            $lblSel.Text      = "Selecionado: $s"
+            $lblSel.ForeColor = $cGreen
+        } else {
+            $lblSel.Text = ''
+        }
+    })
+
+    $lb.add_DoubleClick({
+        if (-not $lb.SelectedItem) { return }
+        $s = $lb.SelectedItem.ToString()
+        if ($s -eq '[ Digitar manualmente ]') { $script:pickerResult = '' }
+        else { $script:pickerResult = $s -replace '  \[sistema\]$','' }
+        $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $dlg.Close()
+    })
+
+    $btnConf = New-Btn $dlg 'Confirmar'         300 450 120 30 $true
+    $btnDig  = New-Btn $dlg 'Digitar manualmente' 20 450 190 30 $false
+
+    $btnConf.add_Click({
+        if (-not $lb.SelectedItem) {
+            [System.Windows.Forms.MessageBox]::Show('Selecione um banco da lista.',
+                '', [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+            return
+        }
+        $s       = $lb.SelectedItem.ToString()
+        $isSys   = $s -like '*  [sistema]'
+        $clean   = $s -replace '  \[sistema\]$',''
+        if ($s -eq '[ Digitar manualmente ]') {
+            $script:pickerResult = ''
+            $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $dlg.Close(); return
+        }
+        if ($isSys) {
+            $r2 = [System.Windows.Forms.MessageBox]::Show(
+                "'$clean' e um banco de sistema do SQL Server.`nDeseja realmente usa-lo?",
+                'Banco de sistema',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Warning)
+            if ($r2 -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        }
+        $script:pickerResult = $clean
+        $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $dlg.Close()
+    })
+
+    $btnDig.add_Click({
+        $script:pickerResult = ''
+        $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $dlg.Close()
+    })
+
+    $dlg.AcceptButton = $btnConf
+    $dlg.ShowDialog($form) | Out-Null
+    return $script:pickerResult
+}
+
+# ════════════════════════════════════════════════════════════════════════════
 function Install-Bridge {
     param(
         [string]$DbName,
@@ -744,6 +907,10 @@ function Install-Bridge {
     $btnBack.Enabled    = $false
     $btnCancel.Enabled  = $false
 
+    try {
+        $logHdr = "LC Gestor Bridge SQL - Instalacao | $(Get-Date -Format 'dd/MM/yyyy HH:mm') | $DbHost`:$DbPort | Banco: $DbName | Porta Bridge: $BPort"
+        [System.IO.File]::WriteAllText($script:LogFile, $logHdr + "`n" + ('=' * 60) + "`n", [System.Text.UTF8Encoding]::new($false))
+    } catch {}
     Add-Log "LC Gestor Bridge SQL v1.2  - iniciando instalacao"
 
     # ── STEP 0: Ambiente ──────────────────────────────────────────────────────
@@ -770,7 +937,29 @@ function Install-Bridge {
     Add-Log "Procurando instalacao do Node.js..."
 
     $nodeOk = $false
-    try {
+    # Node portavel bundled em vendor\node\ tem prioridade absoluta — sem MSI, sem PATH
+    $portableNode = Join-Path $BridgeDir 'vendor\node\node.exe'
+    if (Test-Path $portableNode) {
+        $runtimeDir  = Join-Path $BridgeDir 'runtime'
+        $runtimeNode = Join-Path $runtimeDir 'node.exe'
+        try {
+            if (-not (Test-Path $runtimeDir)) { New-Item $runtimeDir -ItemType Directory -Force | Out-Null }
+            if (-not (Test-Path $runtimeNode)) {
+                Add-Log "Copiando node.exe portavel para runtime\ (aguarde)..."
+                Copy-Item $portableNode $runtimeNode -Force -ErrorAction Stop
+                Add-Log "node.exe copiado para runtime\node.exe" 'ok'
+            } else {
+                Add-Log "runtime\node.exe ja presente." 'ok'
+            }
+            $script:NodeFull = $runtimeNode
+        } catch {
+            Add-Log "Aviso: falha ao copiar para runtime\, usando vendor diretamente." 'warn'
+            $script:NodeFull = $portableNode
+        }
+        $nodeOk = $true
+        Add-Log "Node portavel ativo: $($script:NodeFull)" 'ok'
+    }
+    if (-not $nodeOk) { try {
         $nv = & node -v 2>&1
         if ($nv -match 'v\d+') {
             Add-Log "Node.js encontrado: $nv" 'ok'
@@ -778,7 +967,7 @@ function Install-Bridge {
             $nc = Get-Command node.exe -ErrorAction SilentlyContinue
             if ($nc) { $script:NodeFull = $nc.Source }
         }
-    } catch { }
+    } catch { } }
 
     if (-not $nodeOk) {
         Add-Log "Node.js nao encontrado. Tentando instalar via winget..." 'warn'
@@ -834,7 +1023,12 @@ function Install-Bridge {
 
     # Invoca o npm-cli.js diretamente para evitar o problema de prefix detection do npm.cmd no Node.js v24
     $npmCli = $null
-    if ($script:NodeFull) {
+    # Pacote OfflineNode: vendor\node\ contem npm junto, independente do caminho do runtime
+    $vendorNpm = Join-Path $BridgeDir 'vendor\node\node_modules\npm\bin\npm-cli.js'
+    if (Test-Path $vendorNpm) {
+        $npmCli = $vendorNpm
+        Add-Log "npm detectado em vendor\node\ (modo portavel)" 'ok'
+    } elseif ($script:NodeFull) {
         $nodeDir = Split-Path $script:NodeFull -Parent
         $candidate = Join-Path $nodeDir 'node_modules\npm\bin\npm-cli.js'
         if (Test-Path $candidate) { $npmCli = $candidate }
@@ -1215,6 +1409,12 @@ Update-Status
             Add-Log "npm install nao instalou as dependencias." 'err'
         }
 
+        # Verifica se a porta da bridge esta disponivel
+        try {
+            $portBusy = & netstat -an 2>$null | Select-String ":${BPort}[^0-9]" | Where-Object { $_ -match 'LISTENING' }
+            if ($portBusy) { Add-Log "AVISO: porta $BPort ja esta em uso por outro processo." 'warn' }
+        } catch {}
+
         # Inicia o servico Windows
         $scStartOut = sc.exe start $SvcName 2>&1
         if ($LASTEXITCODE -eq 0) {
@@ -1374,22 +1574,42 @@ $btnNext.Add_Click({
 $btnBack.Add_Click({ Show-Page 0 })
 
 $btnInstall.Add_Click({
-    $errors = @()
-    if ($tbDbName.Text.Trim()  -eq '') { $errors += 'Nome do banco de dados e obrigatorio.' }
+    $dh = $tbDbHost.Text.Trim(); if ($dh -eq '') { $dh = 'localhost' }
+    $dp = $tbDbPort.Text.Trim(); if ($dp -eq '') { $dp = '1433' }
+    $bp = $tbBridgeP.Text.Trim(); if ($bp -eq '') { $bp = '3055' }
 
-    if ($errors.Count -gt 0) {
+    # Seleção assistida de banco apenas se o campo ainda estiver vazio
+    if ($tbDbName.Text.Trim() -eq '') {
+        $btnInstall.Enabled = $false
+        $btnInstall.Text    = 'Conectando...'
+        $btnBack.Enabled    = $false
+        $btnCancel.Enabled  = $false
+        [System.Windows.Forms.Application]::DoEvents()
+
+        $picked = Show-DbPicker -DbHost $dh -DbPort $dp
+
+        $btnInstall.Enabled = $true
+        $btnInstall.Text    = 'Instalar'
+        $btnBack.Enabled    = $true
+        $btnCancel.Enabled  = $true
+
+        if ($null -ne $picked -and $picked -ne '') {
+            $tbDbName.Text = $picked
+        }
+    }
+
+    if ($tbDbName.Text.Trim() -eq '') {
+        $errMsg = 'Nome do banco de dados e obrigatorio.'
+        if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
+            $errMsg += "`nComo sqlcmd nao foi encontrado, preencha o nome manualmente."
+        }
         [System.Windows.Forms.MessageBox]::Show(
-            ($errors -join "`n"),
-            'Campos obrigatorios',
+            $errMsg, 'Campo obrigatorio',
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning
         ) | Out-Null
         return
     }
-
-    $dh = $tbDbHost.Text.Trim(); if ($dh -eq '') { $dh = 'localhost' }
-    $dp = $tbDbPort.Text.Trim(); if ($dp -eq '') { $dp = '1433' }
-    $bp = $tbBridgeP.Text.Trim(); if ($bp -eq '') { $bp = '3055' }
 
     Show-Page 2
     $form.Refresh()

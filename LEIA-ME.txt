@@ -1,16 +1,33 @@
 LC Gestor - Bridge SQL
 ======================
-Versao 1.2 | LC Tecnologias
+Versao 1.3 | LC Tecnologias
 
 O que e isso?
 -------------
 Este programa conecta o dashboard LC Gestor ao SQL Server desta maquina.
 Ele roda em segundo plano e responde apenas a consultas autorizadas do sistema.
 
+Qual pacote usar?
+-----------------
+LC-Bridge-Tecnico.zip              -> Clientes com internet (maioria dos casos)
+LC-Bridge-Tecnico-OfflineNode.zip  -> Servidores RDP ou sem winget disponivel
+
+Diferenca entre os pacotes
+--------------------------
+Pacote normal:
+  O instalador baixa e instala o Node.js automaticamente via winget.
+  Requer internet. Funciona na maioria dos Windows 10/11 clientes.
+
+Pacote OfflineNode:
+  Vem com o Node.js embutido (pasta vendor\node\).
+  Nao precisa instalar Node.js no cliente (resolve o problema do winget no RDP).
+  O npm install das dependencias (mssql, dotenv) ainda usa internet.
+  Indicado para: Windows Server, RDP, politicas que bloqueiam o winget/MSI.
+
 Como instalar
 -------------
-1. Copie esta pasta inteira (lc-sql-bridge) para este PC.
-   Sugestao de local: C:\LC\lc-sql-bridge\
+1. Copie esta pasta inteira para este PC.
+   Local padrao: C:\max\uteis\
 
 2. De duplo clique em LCBRIDGE-INSTALL.exe
    - O Windows pedira confirmacao de Administrador. Clique em "Sim".
@@ -21,39 +38,38 @@ Como instalar
 
 O que o instalador faz automaticamente
 ---------------------------------------
-- Instala o Node.js se nao estiver presente
-- Instala as dependencias do programa
+- Detecta ou instala o Node.js (ou usa o embutido no pacote OfflineNode)
+- Instala as dependencias do programa (mssql, dotenv)
 - Cria o usuario SQL lc_dashboard (somente leitura)
 - Cria um .env com as configuracoes e token de seguranca
-- Registra o servico para iniciar automaticamente com o Windows
+- Registra o servico Windows para iniciar automaticamente
 
 Requisitos
 ----------
-- Windows 10 ou superior (64 bits)
+- Windows 10 ou superior, ou Windows Server 2016+ (64 bits)
 - Acesso de Administrador local
-- Conexao com a internet (para instalar Node.js se necessario)
+- Conexao com a internet (para instalar dependencias Node.js)
 - SQL Server acessivel localmente (porta 1433)
 
 Arquivos desta pasta
 ---------------------
-LCBRIDGE-INSTALL.exe          -> Duplo clique para instalar (use sempre este)
-INSTALAR.bat          -> Alternativa caso o .exe nao funcione
-iniciar-bridge.ps1    -> Inicia manualmente (caso necessario)
-desinstalar-bridge.ps1-> Remove o servico desta maquina
-testar-bridge.ps1     -> Testa a conexao sem reinstalar
-bridge.js             -> O programa em si (nao edite)
-package.json          -> Dependencias do Node.js (nao edite)
+LCBRIDGE-INSTALL.exe   -> Duplo clique para instalar (use sempre este)
+bridge.js              -> O programa em si (nao edite)
+package.json           -> Dependencias do Node.js (nao edite)
+vendor\node\           -> (pacote OfflineNode apenas) Node.js portavel embutido
 
 Arquivos criados apos instalacao
 ---------------------------------
-.env                  -> Token e credenciais (NUNCA compartilhe este arquivo)
-node_modules/         -> Dependencias instaladas automaticamente
-logs/                 -> Registros de atividade da bridge
-configuracao-cliente.txt -> Resumo da instalacao (sem o token)
+.env                      -> Token e credenciais (NUNCA compartilhe este arquivo)
+runtime\node.exe          -> Node.js local (pacote OfflineNode, pode manter)
+node_modules/             -> Dependencias instaladas automaticamente
+logs/                     -> Registros de atividade da bridge
+install-log.txt           -> Log detalhado da instalacao
+configuracao-cliente.txt  -> Resumo da instalacao (sem o token)
 
 Desinstalar
 -----------
-Execute desinstalar-bridge.ps1 com o botao direito -> "Executar com PowerShell".
+Abra LCBRIDGE-INSTALL.exe e escolha a opcao "Desinstalar" na tela inicial.
 
 Suporte
 -------

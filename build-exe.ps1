@@ -176,13 +176,66 @@ try {
     Write-Host "   ERRO ao gerar ZIP: $_" -ForegroundColor Red
 }
 
+# [+] Gerar pacote OfflineNode (apenas se vendor\node\ estiver presente)
+$VendorNodeExe = Join-Path $PSScriptRoot "vendor\node\node.exe"
+$VendorNpmCli  = Join-Path $PSScriptRoot "vendor\node\node_modules\npm\bin\npm-cli.js"
+$ZipOffline    = Join-Path $PSScriptRoot "LC-Bridge-Tecnico-OfflineNode.zip"
+$offlineGerado = $false
+
+if ((Test-Path $VendorNodeExe) -and (Test-Path $VendorNpmCli)) {
+    Write-Host ""
+    Write-Host "[+] Node portátil encontrado: gerando pacote OfflineNode..." -ForegroundColor Cyan
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+        if (Test-Path $ZipOffline) { Remove-Item $ZipOffline -Force }
+        $zipOff = [System.IO.Compression.ZipFile]::Open($ZipOffline, 'Create')
+
+        foreach ($f in $zipFiles) {
+            $full = Join-Path $PSScriptRoot $f.Name
+            if (Test-Path $full) {
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipOff, $full, $f.Name) | Out-Null
+                Write-Host "   + $($f.Name)" -ForegroundColor Gray
+            }
+        }
+
+        $vendorNodeDir = Join-Path $PSScriptRoot "vendor\node"
+        $allVendorFiles = Get-ChildItem $vendorNodeDir -Recurse -File
+        Write-Host "   + vendor\node\ ($($allVendorFiles.Count) arquivos)..." -ForegroundColor Gray
+        foreach ($file in $allVendorFiles) {
+            $relPath = $file.FullName.Substring($PSScriptRoot.Length).TrimStart('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipOff, $file.FullName, $relPath) | Out-Null
+        }
+
+        $zipOff.Dispose()
+        $sizeMBOff = [math]::Round((Get-Item $ZipOffline).Length / 1MB, 1)
+        Write-Host "   OK: LC-Bridge-Tecnico-OfflineNode.zip gerado ($sizeMBOff MB)" -ForegroundColor Green
+        $offlineGerado = $true
+    } catch {
+        if ($null -ne $zipOff) { try { $zipOff.Dispose() } catch {} }
+        Write-Host "   ERRO ao gerar pacote OfflineNode: $_" -ForegroundColor Red
+    }
+} else {
+    Write-Host ""
+    Write-Host "[+] vendor\node\ nao encontrado - pacote OfflineNode nao gerado." -ForegroundColor Yellow
+    if (-not (Test-Path $VendorNodeExe)) {
+        Write-Host "    Para habilitar: coloque node.exe em vendor\node\ e node_modules\npm\ ao lado." -ForegroundColor Gray
+    }
+}
+
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  Pronto! Envie ao tecnico apenas:" -ForegroundColor White
+Write-Host "  Pronto! Pacotes gerados:" -ForegroundColor White
 Write-Host ""
 Write-Host "  LC-Bridge-Tecnico.zip" -ForegroundColor Yellow
+Write-Host "    Clientes com internet: Node via winget" -ForegroundColor Gray
+if ($offlineGerado) {
+    Write-Host ""
+    Write-Host "  LC-Bridge-Tecnico-OfflineNode.zip" -ForegroundColor Yellow
+    Write-Host "    Clientes RDP/sem winget: Node portátil embutido" -ForegroundColor Gray
+}
 Write-Host ""
-Write-Host "  Conteudo do ZIP:" -ForegroundColor White
+Write-Host "  Conteudo base dos dois pacotes:" -ForegroundColor White
 Write-Host "    LCBRIDGE-INSTALL.exe  <- duplo clique para instalar" -ForegroundColor Gray
 Write-Host "    bridge.js" -ForegroundColor Gray
 Write-Host "    package.json" -ForegroundColor Gray

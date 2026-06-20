@@ -3,3 +3,7 @@ node_modules/
 logs/
 configuracao-cliente.txt
 criar-usuario.sql
+vendor/node/
+vendor/node_modules/
+runtime/
+LC-Bridge-Tecnico-OfflineNode.zip
