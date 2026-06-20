@@ -124,7 +124,9 @@ function isSafeQuery(raw) {
 }
 
 // ── Pool SQL Server ───────────────────────────────────────────────────────────
-let pool = null
+let pool          = null
+let _connected    = false  // true após primeira conexão bem-sucedida
+let _retryPending = false  // evita múltiplos timers de retry simultâneos
 
 async function getPool() {
   if (pool && pool.connected) return pool
@@ -139,8 +141,26 @@ async function getPool() {
     requestTimeout: QUERY_TIMEOUT_MS,
     pool: { max: 5, min: 0, idleTimeoutMillis: 30000 },
   })
-  log.info('SQL Server conectado', { host: DB_HOST, db: DB_NAME, port: DB_PORT })
+  if (!_connected) log.info('SQL Server conectado', { host: DB_HOST, db: DB_NAME, port: DB_PORT })
+  _connected = true
   return pool
+}
+
+// Retry em background com delay exponencial (5s → 10s → 20s → ... → 60s máx)
+function scheduleRetry(delaySec) {
+  if (_retryPending) return
+  _retryPending = true
+  setTimeout(async () => {
+    _retryPending = false
+    try {
+      await getPool()
+    } catch (err) {
+      _connected = false
+      const next = Math.min(delaySec * 2, 60)
+      log.warn('SQL indisponivel, nova tentativa em ' + next + 's', { error: err.message })
+      scheduleRetry(next)
+    }
+  }, delaySec * 1000)
 }
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
@@ -150,7 +170,7 @@ const server = http.createServer((req, res) => {
 
   // Health check público (sem auth)
   if (req.method === 'GET' && req.url === '/health') {
-    return res.end(JSON.stringify({ ok: true, db: DB_NAME, port: PORT }))
+    return res.end(JSON.stringify({ ok: true, db: DB_NAME, port: PORT, sql: _connected }))
   }
 
   // Autenticação Bearer — não loga o token, só o IP em caso de falha
@@ -229,7 +249,9 @@ const server = http.createServer((req, res) => {
     } catch (err) {
       const ms = Date.now() - start
       log.error('Erro na query', { ms, query: queryPreview, error: err.message })
-      pool = null  // força reconexão no próximo request
+      pool = null
+      _connected = false
+      scheduleRetry(5)  // reconecta em background sem esperar próximo request
 
       res.statusCode = 500
       res.end(JSON.stringify({ error: err.message }))
@@ -245,11 +267,19 @@ server.listen(PORT, () => {
     token: TOKEN.slice(0, 8) + '...',
     timeout_ms: QUERY_TIMEOUT_MS,
   })
+  // Tenta conectar ao SQL imediatamente; se falhar, retry em background
+  getPool().catch(err => {
+    _connected = false
+    log.warn('SQL indisponivel na inicializacao, tentando em background...', { error: err.message })
+    scheduleRetry(5)
+  })
 })
 
 process.on('unhandledRejection', err => {
   log.error('Erro não tratado', { error: err?.message ?? String(err) })
   pool = null
+  _connected = false
+  scheduleRetry(5)
 })
 
 process.on('SIGTERM', () => {
