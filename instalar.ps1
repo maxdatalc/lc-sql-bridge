@@ -781,32 +781,25 @@ function Uninstall-Bridge {
 function Show-DbPicker([string]$DbHost, [string]$DbPort) {
     # Retorna: nome do banco selecionado | '' para digitacao manual | $null se indisponivel
 
-    # Localiza sqlcmd
-    $sqlcmdBin = $null
-    $sc2 = Get-Command sqlcmd -ErrorAction SilentlyContinue
-    if ($sc2) { $sqlcmdBin = $sc2.Source }
-    if (-not $sqlcmdBin) {
-        foreach ($c in @(
-            "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\180\Tools\Binn\sqlcmd.exe",
-            "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\sqlcmd.exe",
-            "${env:ProgramFiles}\Microsoft SQL Server\130\Tools\Binn\sqlcmd.exe",
-            "${env:ProgramFiles}\Microsoft SQL Server\120\Tools\Binn\sqlcmd.exe"
-        )) { if (Test-Path $c) { $sqlcmdBin = $c; break } }
-    }
-    if (-not $sqlcmdBin) { return $null }
-
     $serverArg = if ($DbPort -eq '' -or $DbPort -eq '1433') { $DbHost } else { "$DbHost,$DbPort" }
     $sysNames  = @('master','model','msdb','tempdb')
     $dbs       = @()
 
+    # Usa System.Data.SqlClient (.NET Framework, sempre disponivel no Windows)
+    # Nao depende de sqlcmd instalado na maquina do cliente
     try {
-        $q = "SET NOCOUNT ON; SELECT name FROM sys.databases WHERE state_desc='ONLINE' ORDER BY name"
-        $r = Invoke-Proc $sqlcmdBin "-S $serverArg -U $SQL_ADMIN_USER -P $SQL_ADMIN_PASS -Q `"$q`" -h -1 -W -l 5 -t 10" -TimeoutSec 20
-        if ($r.ExitCode -eq 0) {
-            $dbs = ($r.Out -split "`r?`n") |
-                   ForEach-Object { $_.Trim() } |
-                   Where-Object   { $_ -ne '' -and $_ -notmatch '^[\s\-]+$' -and $_ -notmatch 'rows? affected' }
-        }
+        Add-Type -AssemblyName System.Data
+        $connStr = "Server=$serverArg;Database=master;User ID=$SQL_ADMIN_USER;Password=$SQL_ADMIN_PASS;Connect Timeout=5;TrustServerCertificate=True"
+        $conn    = New-Object System.Data.SqlClient.SqlConnection $connStr
+        $conn.Open()
+        $cmd     = New-Object System.Data.SqlClient.SqlCommand(
+                       "SELECT name FROM sys.databases WHERE state_desc='ONLINE' ORDER BY name",
+                       $conn)
+        $cmd.CommandTimeout = 8
+        $reader  = $cmd.ExecuteReader()
+        while ($reader.Read()) { $dbs += $reader.GetString(0) }
+        $reader.Close()
+        $conn.Close()
     } catch {}
 
     if ($dbs.Count -eq 0) { return $null }
