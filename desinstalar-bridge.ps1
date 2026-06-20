@@ -62,6 +62,28 @@ schtasks.exe /delete /f /tn 'LC Gestor SQL Bridge' 2>$null | Out-Null
 Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' `
     -Name 'LCGestorSQLBridge' -ErrorAction SilentlyContinue
 
+# 3. Remover servico Cloudflare Tunnel se instalado (antes de apagar runtime\)
+$cfSvc = Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue
+if ($cfSvc) {
+    Write-Host "Removendo Cloudflare Tunnel..." -NoNewline
+    $runtimeCf = Join-Path $ScriptDir 'runtime\cloudflared.exe'
+    $cfExe = $null
+    if (Test-Path $runtimeCf) { $cfExe = $runtimeCf }
+    else {
+        $cfCmd = Get-Command cloudflared -ErrorAction SilentlyContinue
+        if ($cfCmd) { $cfExe = $cfCmd.Source }
+    }
+    if ($cfExe) {
+        try { & $cfExe service uninstall 2>&1 | Out-Null } catch {}
+    } else {
+        sc.exe stop Cloudflared 2>&1 | Out-Null
+        sc.exe delete Cloudflared 2>&1 | Out-Null
+    }
+    Write-Host " OK" -ForegroundColor Green
+} else {
+    Write-Host "Cloudflare Tunnel nao encontrado (nao configurado)." -ForegroundColor Gray
+}
+
 # 3. Remover arquivos gerados pela instalacao
 Write-Host ""
 Write-Host "Removendo arquivos de instalacao..." -ForegroundColor Cyan

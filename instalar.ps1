@@ -84,7 +84,8 @@ $script:StepNames = @(
     'Configurando usuario SQL',
     'Criando arquivo .env',
     'Registrando servico Windows',
-    'Testando conexao'
+    'Testando conexao',
+    'Cloudflare Tunnel'
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -325,6 +326,11 @@ $tbDbPort   = Add-Field $cardCfg 'Porta SQL'            228  90 80  '1433'
 $tbBridgeP  = Add-Field $cardCfg 'Porta bridge'         322  90 116 '3055'
 
 New-Lbl $pgConfig '* Campo obrigatorio' 30 316 220 20 $fSmall $cMuted 'MiddleLeft' | Out-Null
+
+$cardCf = New-Card $pgConfig 30 340 456 114
+New-Lbl $cardCf 'Cloudflare Tunnel  (opcional)' 10 8 340 20 $fBold $cMuted 'MiddleLeft' | Out-Null
+$tbCfToken = Add-Field $cardCf 'Token do Tunnel' 10 30 434 ''
+New-Lbl $cardCf 'Deixe em branco para configurar depois' 10 86 430 18 $fSmall $cMuted 'MiddleLeft' | Out-Null
 
 # ════════════════════════════════════════════════════════════════════════════
 # PAGE 3  - PROGRESS
@@ -708,6 +714,26 @@ function Uninstall-Bridge {
         }
     }
 
+    # Remove servico Cloudflare Tunnel se instalado (antes de apagar runtime\)
+    $cfSvc = Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue
+    if ($cfSvc) {
+        Add-Log "Removendo servico Cloudflare Tunnel..."
+        $runtimeCfPath = Join-Path $BridgeDir 'runtime\cloudflared.exe'
+        $cfExeUn = $null
+        if (Test-Path $runtimeCfPath) { $cfExeUn = $runtimeCfPath }
+        else {
+            $cfCmdUn = Get-Command cloudflared -ErrorAction SilentlyContinue
+            if ($cfCmdUn) { $cfExeUn = $cfCmdUn.Source }
+        }
+        if ($cfExeUn) {
+            try { & $cfExeUn service uninstall 2>&1 | Out-Null } catch {}
+        } else {
+            sc.exe stop Cloudflared 2>&1 | Out-Null
+            sc.exe delete Cloudflared 2>&1 | Out-Null
+        }
+        Add-Log "Cloudflare Tunnel removido." 'ok'
+    }
+
     $runtimeDir2 = Join-Path $BridgeDir 'runtime'
     if (Test-Path $runtimeDir2) {
         Set-Prog 3 'Removendo runtime (node portavel)...'
@@ -899,6 +925,7 @@ function Install-Bridge {
         [string]$DbHost,
         [string]$DbPort,
         [string]$BPort,
+        [string]$CfToken = '',
         [bool]$Repair
     )
 
@@ -1483,6 +1510,64 @@ Update-Status
     if ($testeOk -and $sqlOk) { Set-Step 6 'done' }
     else                       { Set-Step 6 'warn' }
 
+    # ── STEP 7: Cloudflare Tunnel (opcional) ─────────────────────────────────
+    $script:ActiveStep = 7; $spinTimer.Start()
+    Set-Step 7 'active'; Set-Prog 7 'Configurando Cloudflare Tunnel...'
+    [System.Windows.Forms.Application]::DoEvents()
+
+    if ($CfToken -eq '') {
+        Add-Log "Cloudflare Tunnel: nao configurado (opcional)." 'ok'
+        Set-Step 7 'done'
+    } else {
+        $cfExe = $null
+        $vendorCf  = Join-Path $BridgeDir 'vendor\cloudflared\cloudflared.exe'
+        $runtimeDir = Join-Path $BridgeDir 'runtime'
+        $runtimeCf  = Join-Path $runtimeDir 'cloudflared.exe'
+
+        if (Test-Path $vendorCf) {
+            try {
+                if (-not (Test-Path $runtimeDir)) { New-Item $runtimeDir -ItemType Directory -Force | Out-Null }
+                if (-not (Test-Path $runtimeCf)) {
+                    Add-Log "Copiando cloudflared.exe para runtime\ (aguarde)..."
+                    Copy-Item $vendorCf $runtimeCf -Force -ErrorAction Stop
+                    Add-Log "cloudflared.exe copiado para runtime\cloudflared.exe" 'ok'
+                } else {
+                    Add-Log "runtime\cloudflared.exe ja presente." 'ok'
+                }
+                $cfExe = $runtimeCf
+            } catch {
+                Add-Log "Aviso: falha ao copiar cloudflared para runtime\, usando vendor." 'warn'
+                $cfExe = $vendorCf
+            }
+        }
+        if (-not $cfExe) {
+            $cfCmd = Get-Command cloudflared -ErrorAction SilentlyContinue
+            if ($cfCmd) { $cfExe = $cfCmd.Source }
+        }
+
+        if (-not $cfExe) {
+            Add-Log "cloudflared.exe nao encontrado. Use o pacote com cloudflared embutido." 'warn'
+            Set-Step 7 'warn'
+        } else {
+            try {
+                Add-Log "Instalando Cloudflare Tunnel como servico Windows..."
+                $cfOut = & $cfExe service install $CfToken 2>&1
+                if ($LASTEXITCODE -eq 0 -or ($cfOut -match 'installed|success')) {
+                    Add-Log "Cloudflare Tunnel configurado como servico." 'ok'
+                    Set-Step 7 'done'
+                } else {
+                    Add-Log "Aviso ao configurar tunnel: $cfOut" 'warn'
+                    Set-Step 7 'warn'
+                }
+            } catch {
+                Add-Log "Erro ao configurar tunnel: $_" 'warn'
+                Set-Step 7 'warn'
+            }
+        }
+    }
+    $spinTimer.Stop()
+    $script:ActiveStep = -1
+
     Set-Prog $script:StepNames.Count 'Instalacao finalizada!'
     Add-Log "Instalacao finalizada." 'ok'
 
@@ -1619,6 +1704,7 @@ $btnInstall.Add_Click({
         -DbHost      $dh `
         -DbPort      $dp `
         -BPort       $bp `
+        -CfToken     $tbCfToken.Text.Trim() `
         -Repair      $false
 })
 
