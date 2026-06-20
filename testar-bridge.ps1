@@ -51,7 +51,8 @@ try {
     }
 } catch {
     Write-Host "FALHOU - bridge nao esta rodando" -ForegroundColor Red
-    Write-Host "   Execute iniciar-bridge.ps1 ou verifique o Agendador de Tarefas." -ForegroundColor Yellow
+    Write-Host "   Verifique o servico Windows: Get-Service LCGestorSQLBridge" -ForegroundColor Yellow
+    Write-Host "   Ou inicie via: Start-Service LCGestorSQLBridge" -ForegroundColor Yellow
     Read-Host "Pressione Enter para sair"
     exit 1
 }
