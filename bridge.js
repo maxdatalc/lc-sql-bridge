@@ -102,7 +102,7 @@ function stripSqlComments(q) {
 
 function isSafeQuery(raw) {
   if (typeof raw !== 'string') return false
-  if (raw.length > 8000) return false
+  if (raw.length > 32000) return false
 
   const stripped = stripSqlComments(raw).trim()
 
